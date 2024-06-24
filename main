@@ -1,0 +1,222 @@
+# import相關程式
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif, RFE
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import Lasso, LogisticRegression
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import classification_report, confusion_matrix, roc_curve, auc, precision_recall_curve
+from sklearn.preprocessing import StandardScaler
+import pandas as pd
+
+# 基本數據分析：檢查重複值、遺漏值..等
+
+# 讀取 CSV 檔案
+file_path = 'HW2_heart.csv'
+df = pd.read_csv(file_path)
+
+#FastingBS已被改為物件型特徵
+
+# 計算資料筆數
+num_records = df.shape[0]
+print(f"共有 {num_records} 筆資料")
+
+# 顯示前20筆資料
+first_20_rows = df.head(20)
+print("前20筆資料:")
+print(first_20_rows)
+
+# 判斷特徵種類
+feature_types = df.dtypes
+print("\n特徵種類:")
+print(feature_types)
+
+# 檢查各欄位是否有缺失值
+missing_values = df.isnull().sum()
+print("\n缺失值情況:")
+print(missing_values)
+
+# 檢查重複行的數量
+num_duplicates = df.duplicated().sum()
+print(f"Number of duplicate rows: {num_duplicates}")
+
+# 填充數字列中的缺失值
+numeric_cols = df.select_dtypes(include=[np.number]).columns
+df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
+
+# 检查 Cholesterol 列的 0 值数量
+zero_cholesterol_count = (df['Cholesterol'] == 0).sum()
+print(f"Cholesterol 列中有 {zero_cholesterol_count} 个 0 值")
+
+# 數值型物件的敘述性統計
+numeric_columns = df.select_dtypes(include=['int64', 'float64']).columns
+print("Numeric类型的特征:", numeric_columns)
+
+# 创建一个图形和子图
+fig, axs = plt.subplots(len(numeric_columns), 1, figsize=(10, len(numeric_columns) * 5))
+
+# 绘制每个数值型特征的直方图
+for i, col in enumerate(numeric_columns):
+    sns.histplot(df[col], bins=30, kde=True, ax=axs[i])
+    axs[i].set_title(f'Histogram of {col}')
+    axs[i].set_xlabel(col)
+    axs[i].set_ylabel('Frequency')
+
+# 调整布局
+plt.tight_layout()
+plt.show()
+
+#從上一個步驟可發現Cholesterol有大量的0，不符合正常情形，屬於漏值的狀況，故先針對此特徵進行補值。
+
+from sklearn.impute import SimpleImputer, KNNImputer
+from sklearn.experimental import enable_iterative_imputer  # 必须导入以启用 IterativeImputer
+from sklearn.impute import IterativeImputer
+
+# 用 0 表示缺失值
+df['Cholesterol'] = df['Cholesterol'].replace(0, np.nan)
+
+# 方法1：使用中位数填充缺失值
+median_imputer = SimpleImputer(strategy='median')
+df['Cholesterol_median'] = median_imputer.fit_transform(df[['Cholesterol']])
+
+# 方法2：使用 KNN 填充缺失值
+knn_imputer = KNNImputer(n_neighbors=5)
+df['Cholesterol_knn'] = knn_imputer.fit_transform(df[['Cholesterol']])
+
+# 方法3：使用多重插补法填充缺失值
+iterative_imputer = IterativeImputer()
+df['Cholesterol_iterative'] = iterative_imputer.fit_transform(df[['Cholesterol']])
+
+# 验证填充结果
+print(df[['Cholesterol', 'Cholesterol_median', 'Cholesterol_knn', 'Cholesterol_iterative']].head())
+
+# 绘制填充后的直方图
+plt.figure(figsize=(15, 10))
+
+# 中位数填充
+plt.subplot(3, 1, 1)
+sns.histplot(df['Cholesterol_median'], bins=30, kde=True)
+plt.title('Cholesterol Distribution (Median Imputation)')
+
+# KNN 填充
+plt.subplot(3, 1, 2)
+sns.histplot(df['Cholesterol_knn'], bins=30, kde=True)
+plt.title('Cholesterol Distribution (KNN Imputation)')
+
+# 多重插补法填充
+plt.subplot(3, 1, 3)
+sns.histplot(df['Cholesterol_iterative'], bins=30, kde=True)
+plt.title('Cholesterol Distribution (Iterative Imputation)')
+
+plt.tight_layout()
+plt.savefig('Cholesterol_imputation_methods.png')  # 保存图表
+plt.show()
+#採用中位數填補缺失值較符合常態分佈，故使用此方法進行補值。
+
+
+
+# 选择一种填充方法作为最终的数据集，这里我们选择中位數填充插补法
+df['Cholesterol'] = df['Cholesterol_median']
+
+# 删除中间生成的填充列
+df.drop(columns=['Cholesterol_median', 'Cholesterol_knn', 'Cholesterol_iterative'], inplace=True)
+
+# 将新的数据集保存到 CSV 文件中
+new_file_path = 'HW2_heart_filled.csv'
+df.to_csv(new_file_path, index=False)
+
+print(f"新的数据集已保存到 {new_file_path}")
+
+
+# 重新分析數值型物件的敘述性統計(Refilled File)
+# 读取数据
+file_path = 'HW2_heart_filled.csv'
+df = pd.read_csv(file_path)
+
+
+# 數值型物件的敘述性統計
+numeric_columns = df.select_dtypes(include=['int64', 'float64']).columns
+print("Numeric类型的特征:", numeric_columns)
+
+for col in numeric_columns:
+    print(f"\n特征: {col}")
+    print(df[col].value_counts())
+
+# 创建一个图形和子图
+fig, axs = plt.subplots(len(numeric_columns), 1, figsize=(10, len(numeric_columns) * 5))
+
+# 绘制每个数值型特征的直方图
+for i, col in enumerate(numeric_columns):
+    sns.histplot(df[col], bins=30, kde=True, ax=axs[i])
+    axs[i].set_title(f'Histogram of {col}')
+    axs[i].set_xlabel(col)
+    axs[i].set_ylabel('Frequency')
+
+# 调整布局
+plt.tight_layout()
+plt.show()
+
+# 对每个数值型特征进行分析并绘制直方图
+for col in numeric_columns:
+    plt.figure(figsize=(10, 6))
+    sns.histplot(data=df, x=col, hue='HeartDisease', multiple='stack', kde=True)
+    plt.title(f'{col} vs HeartDisease (Histogram)')
+    plt.xlabel(col)
+    plt.ylabel('Frequency')
+    plt.savefig(f'{col}_vs_HeartDisease_histogram.png')  # 保存图表
+    plt.show()
+
+# 繪製數值型特徵的箱線圖
+numeric_columns = df.select_dtypes(include=['int64', 'float64']).columns
+print("Numeric类型的特征:", numeric_columns)
+
+# 对每个数值型特征进行分析并绘制箱线图
+for col in numeric_columns:
+    plt.figure(figsize=(10, 6))
+    sns.boxplot(data=df, x='HeartDisease', y=col)
+    plt.title(f'{col} vs HeartDisease (Box Plot)')
+    plt.xlabel('HeartDisease')
+    plt.ylabel(col)
+    plt.savefig(f'{col}_vs_HeartDisease_boxplot.png')  # 保存图表
+    plt.show()
+
+# 繪製物件型資料的直方圖
+# 提取对象类型的特征
+object_columns = df.select_dtypes(include=['object']).columns
+print("Object类型的特征:", object_columns)
+
+# 对每个对象类型的特征进行描述性分析
+for col in object_columns:
+    print(f"\n特征: {col}")
+    print(df[col].value_counts())
+    print(df[col].value_counts(normalize=True) * 100)
+
+    # 绘制频数柱状图
+    plt.figure(figsize=(10, 6))
+    sns.countplot(data=df, x=col)
+    plt.title(f'Frequency of {col}')
+    plt.xlabel(col)
+    plt.ylabel('Frequency')
+    plt.xticks(rotation=45)
+    plt.show()
+
+
+# 物件型特徵與有無心臟疾病的直方圖
+object_columns = df.select_dtypes(include=['object']).columns
+print("Object类型的特征:", object_columns)
+
+for col in object_columns:
+    crosstab = pd.crosstab(df[col], df['HeartDisease'], normalize='index')
+    crosstab.plot(kind='bar', stacked=True, figsize=(10, 6), colormap='coolwarm')
+    plt.title(f'{col} vs HeartDisease (Stacked Bar Chart)')
+    plt.xlabel(col)
+    plt.ylabel('Proportion')
+    plt.legend(title='HeartDisease', bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.xticks(rotation=45)
+    plt.show()
+
